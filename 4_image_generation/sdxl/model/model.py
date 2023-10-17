@@ -5,7 +5,8 @@
 # # Set up imports and torch settings
 #
 # In this example, we use the Huggingface diffusers library to build our text-to-image model.
-from diffusers import DiffusionPipeline, AutoencoderKL, DPMSolverMultistepScheduler
+from diffusers import DiffusionPipeline, AutoencoderKL, DPMSolverMultistepScheduler, StableDiffusionXLImg2ImgPipeline
+from diffusers.utils import load_image
 import torch
 import base64
 from PIL import Image
@@ -33,7 +34,7 @@ class Model:
         vae = AutoencoderKL.from_pretrained(
             "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
         )
-        self.pipe = DiffusionPipeline.from_pretrained(
+        self.pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
             vae=vae,
             torch_dtype=torch.float16,
@@ -80,6 +81,7 @@ class Model:
         end_cfg_frac = model_input.pop("end_cfg_frac", 0.4)
         guidance_scale = model_input.pop("guidance_scale", 7.5)
         seed = model_input.pop("seed", None)
+        init_image = model_input.pop("init_image", None)
 
         scheduler = model_input.pop("scheduler", None) # Default: EulerDiscreteScheduler (works pretty well)
 
@@ -103,9 +105,10 @@ class Model:
 
         start_time = time.time()
         image = self.pipe(prompt=prompt,
+                          image=init_image,
                           negative_prompt=negative_prompt,
                           generator=generator,
-                          end_cfg = end_cfg_frac,
+                        #  end_cfg = end_cfg_frac,
                           num_inference_steps=num_inference_steps,
                           denoising_end=denoising_frac, 
                           guidance_scale=guidance_scale,
@@ -116,7 +119,7 @@ class Model:
             image = self.refiner(prompt=prompt,
                                  negative_prompt=negative_prompt,
                                 generator=generator,
-                                 end_cfg = end_cfg_frac, 
+                            #    end_cfg = end_cfg_frac, 
                                  num_inference_steps=num_inference_steps, 
                                  denoising_start=denoising_frac,
                                  guidance_scale=guidance_scale,
@@ -129,3 +132,19 @@ class Model:
         print(f"Time: {end_time:.2f} seconds")
 
         return {"status": "success", "data": b64_results, "time": end_time}
+
+if __name__ == "__main__":
+    model = Model()
+    model.load()
+
+    img_url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
+    init_image = load_image(img_url).convert("RGB")
+    # W, H = init_image.size
+    # if H > W:
+    #     W = int(W * 1024 / H)
+    #     H = 1024
+    # else:
+    #     H = int(H * 1024 / W)
+    #     W = 1024
+    init_image = init_image.resize((W, H), Image.BILINEAR)
+    model.predict({"prompt": "a photo of an astronaut riding a horse on mars", "negative_prompt": "A cat", "init_image": init_image})
